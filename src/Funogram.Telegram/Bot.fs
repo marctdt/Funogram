@@ -46,17 +46,17 @@ type UpdateContext =
 // Text of the command; 1-32 characters. Can contain only lowercase English letters, digits and underscores.
 let inline private isAllowedChar (c: char) = Char.IsLetter c || Char.IsDigit c || c = '_'
 
-// returns -1 if the command is not valid otherwise index of last character 
+// returns -1 if the command is not valid otherwise index of last character
 let private validateCommand (text: string) =
   let rec iter (text: string) i len =
     if i >= len || isAllowedChar text.[i] |> not then
       (i - 1)
     else
       iter text (i + 1) len
-  
+
   if text.Length <= 1 || text.[0] <> '/' then -1
   else iter text 1 text.Length
-  
+
 let getTextForCommand (me: User) (textOriginal: string option) =
   match me.Username, textOriginal with
   | Some username, Some text when text.Length > 0 && text.[0] = '/' ->
@@ -67,12 +67,12 @@ let getTextForCommand (me: User) (textOriginal: string option) =
       text.Remove(idx + 1, username.Length + 1) |> Some
     | _ -> textOriginal
   | _ -> textOriginal
-  
+
 let checkCommand (context: UpdateContext) (command: string) =
   match context.Update.Message with
   | Some { Text = text } when (getTextForCommand context.Me text) = Some command -> true
   | _ -> false
-    
+
 let cmd (command: string) (handler: UpdateContext -> unit) (context: UpdateContext) =
   context.Update.Message
   |> Option.bind (fun message -> getTextForCommand context.Me message.Text)
@@ -93,7 +93,7 @@ let cmdScan (format: PrintfFormat<_, _, _, _, 't>) (handler: 't -> UpdateContext
   |> not
 
 let private runBot config me updateArrived updatesArrived =
-  let bot data = api config data
+  let bot data = apiAsync config data
 
   let processUpdates updates =
     if updates |> Seq.isEmpty |> not then
@@ -116,12 +116,12 @@ let private runBot config me updateArrived updatesArrived =
             return! loopAsync offset // send new offset
           | Error e ->
             config.OnError (e.AsException() :> Exception)
-            
+
             // add delay in case of HTTP error
             // for example: the server may be "busy"
             if e.Description = "HTTP_ERROR" then
               do! Async.Sleep 1000
-            
+
             return! loopAsync offset
           | _ ->
             return! loopAsync offset
@@ -131,7 +131,7 @@ let private runBot config me updateArrived updatesArrived =
           config.OnError e
           do! Async.Sleep 1000
           return! loopAsync offset
-          
+
         | ex ->
           config.OnError ex
           // in case of "general" error we should increment offset to skip problematic update
@@ -149,7 +149,7 @@ let private runBot config me updateArrived updatesArrived =
 
       while listener.IsListening do
         let! context = listener.GetContextAsync() |> Async.AwaitTask
-        
+
         if validateRequest context.Request then
           match Funogram.Tools.parseJsonStream<Update> context.Request.InputStream with
           | Ok updates -> processUpdates [| updates |]
@@ -157,13 +157,13 @@ let private runBot config me updateArrived updatesArrived =
         else
           context.Response.StatusCode <- 403
         context.Response.Close()
-          
+
     }
-    
+
 let startBot config updateArrived updatesArrived =
   async {
-    let! me = Api.getMe |> api config
-    return! me 
+    let! me = Api.getMe |> apiAsync config
+    return! me
     |> function
     | Error error -> failwith error.Description
     | Ok me -> runBot config me updateArrived updatesArrived
